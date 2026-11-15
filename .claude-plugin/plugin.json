@@ -1,0 +1,21 @@
+{
+  "name": "ajan-ofisi",
+  "version": "0.2.0",
+  "description": "A live side panel that shows your subagents as pixel characters in an office, plus a tree view",
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "owner": {
+      "type": "string",
+      "title": "Owner name",
+      "description": "Name on the manager's office nameplate and the finished-work button. Long names are shortened on the nameplate.",
+      "default": "Claude"
+    },
+    "language": {
+      "type": "string",
+      "title": "Language",
+      "description": "Language of the panel and command text: en (English) or tr (Turkish).",
+      "default": "en",
+      "options": ["en", "tr"]
+    }
+  }
+}
