@@ -791,16 +791,122 @@ type IdleAct = 'sip' | 'read' | 'window' | 'walk' | 'nap'
 
 const IDLE_ACTS: IdleAct[] = ['sip', 'read', 'window', 'walk']
 
-// Dolaşma: koltuktaki karakter kaybolur, masanın önünde (halının üstünde) belirir,
-// sola pencere tarafına, sonra sağa kitaplık tarafına yürür ve koltuğuna döner.
-// Masanın arkasından yürüyünce masa hizasında kayan bir gövde gibi duruyordu.
-const STROLL_KEYS = '0;0.04;0.8;0.84;1'
-const SEAT_FADE = `<animate attributeName="opacity" values="1;0;0;1;1" keyTimes="${STROLL_KEYS}" dur="28s" repeatCount="indefinite"/>`
-const FLOOR_FADE = `<animate attributeName="opacity" values="0;1;1;0;0" keyTimes="${STROLL_KEYS}" dur="28s" repeatCount="indefinite"/>`
-const STROLL =
-  '<animateTransform attributeName="transform" type="translate" values="0,13;0,13;-11,13;-11,13;14,13;14,13;0,13;0,13" keyTimes="0;0.04;0.14;0.32;0.5;0.68;0.8;1" dur="28s" repeatCount="indefinite"/>'
-const STEP =
-  '<animateTransform attributeName="transform" type="translate" values="0,0;0,-0.25;0,0" dur="0.5s" repeatCount="indefinite"/>'
+// Boşta hareketlerinin hepsi aynı 30 sn'lik turu izler: tur koltukta, nötr pozda
+// başlar ve biter (ilk 6 sn ve son 2 sn'den fazlası nötr), çünkü tick yeni dilimi en çok
+// 5 sn geç fark eder. Her SMIL öğesi begin="-<faz>s" alır; panel yeniden çizilince
+// hareket baştan değil, dilimin o anki saniyesinden sürer.
+type Frame = [number, string]
+const IDLE_S = IDLE_SLOT_MS / 1000
+
+const idleAnim = (
+  kind: 'move' | 'show',
+  frames: Frame[],
+  begin: string,
+): string => {
+  const keyTimes = frames.map(([t]) => String(Math.round((t / IDLE_S) * 1e5) / 1e5)).join(';')
+  const values = frames.map(([, v]) => v).join(';')
+  const head =
+    kind === 'move'
+      ? '<animateTransform attributeName="transform" type="translate"'
+      : '<animate attributeName="opacity" calcMode="discrete"'
+
+  return `${head} values="${values}" keyTimes="${keyTimes}" dur="${IDLE_S}s" begin="${begin}" repeatCount="indefinite"/>`
+}
+
+// Kahve: 2 sn'lik bir yudum (0.6 kaldır, 0.8 iç, 0.6 bırak), arada 6 sn bekleme.
+const SIP_AT = [6, 14, 22]
+const SIP: Frame[] = [
+  [0, '0,0'],
+  ...SIP_AT.flatMap((t): Frame[] => [
+    [t, '0,0'],
+    [t + 0.6, '-46,-18'],
+    [t + 1.4, '-46,-18'],
+    [t + 2, '0,0'],
+  ]),
+  [IDLE_S, '0,0'],
+]
+
+// Kitap: 6. sn'de masanın arkasından (kucaktan) kalkar, arada sayfa çevrilir, 26.5'te iner.
+const PAGE_AT = [12, 17.5, 22.5]
+const READ: Frame[] = [
+  [0, '0,20'],
+  [6, '0,20'],
+  [7, '0,0'],
+  ...PAGE_AT.flatMap((t): Frame[] => [
+    [t, '0,0'],
+    [t + 0.3, '0,-1'],
+    [t + 0.6, '0,0'],
+  ]),
+  [25.5, '0,0'],
+  [26.5, '0,20'],
+  [IDLE_S, '0,20'],
+]
+
+// Pencere: üç kez birkaç saniye sola, pencereye bakar; gövde 1 piksel o yana eğilir.
+const LOOKS: [number, number][] = [
+  [6.5, 10.5],
+  [15.5, 19.5],
+  [23, 26],
+]
+const GLANCE: Frame[] = [[0, '0'], ...LOOKS.flatMap(([a, b]): Frame[] => [[a, '1'], [b, '0']])]
+const LEAN: Frame[] = [
+  [0, '0,0'],
+  ...LOOKS.flatMap(([a, b]): Frame[] => [
+    [a, '0,0'],
+    [a + 0.3, '-0.25,0'],
+    [b - 0.3, '-0.25,0'],
+    [b, '0,0'],
+  ]),
+  [IDLE_S, '0,0'],
+]
+
+// Dolaşma, sahne biriminde (1 birim = 4 piksel), koltuk (86,72) noktasına göre:
+// kalkar (0,-1), masanın arkasından sağ uca yürür (21.5,-1), masanın sağ kenarından
+// öne iner (21.5,11), halıda sola (-9,11) ve sağa (12,11) gider, aynı kenardan
+// arkaya çıkar, koltuğa yürüyüp oturur. Sağ uçta gövde masanın, fincanın ve isimliğin
+// dışında kalır; katman orada, iki kopya aynı yerdeyken anlık değişir.
+const CORNER = '21.5,-1'
+const OUT_AT = 9.75
+const BACK_AT = 23.75
+const WALK: Frame[] = [
+  [0, '0,0'],
+  [6, '0,0'],
+  [6.5, '0,-1'],
+  [7, '0,-1'],
+  [OUT_AT, CORNER],
+  [11.25, '21.5,11'],
+  [15, '-9,11'],
+  [17, '-9,11'],
+  [19.5, '12,11'],
+  [21, '12,11'],
+  [22.25, '21.5,11'],
+  [BACK_AT, CORNER],
+  [26.5, '0,-1'],
+  [27, '0,-1'],
+  [27.5, '0,0'],
+  [IDLE_S, '0,0'],
+]
+// Masanın önündeki kopya yalnız köşeden köşeye görünür; arkadaki hep yerinde, öndeki onu örter.
+const FRONT: Frame[] = [
+  [0, '0'],
+  [OUT_AT, '1'],
+  [BACK_AT, '0'],
+]
+// Adım sallantısı yalnız yürürken: 0.25 sn'de bir iner kalkar, dururken durur.
+const STRIDES: [number, number][] = [
+  [7, 15],
+  [17, 19.5],
+  [21, 26.5],
+]
+const STEP: Frame[] = [
+  [0, '0,0'],
+  ...STRIDES.flatMap(([a, b]): Frame[] => {
+    const out: Frame[] = []
+    for (let i = 0; a + i * 0.25 <= b + 1e-9; i++) out.push([a + i * 0.25, i % 2 === 0 ? '0,0' : '0,-0.25'])
+    return out
+  }),
+  [IDLE_S, '0,0'],
+]
 
 const bossRoom = (
   all: AgentRow[],
@@ -808,6 +914,7 @@ const bossRoom = (
   now: number,
   isBusy: boolean,
   idleSince: number,
+  idleAt: number,
 ): string => {
   const fam = family(main)
   // Tur içindeyse çalışıyor; o sırada açık ajan varsa onları bekliyor; tur bittiyse sıra kullanıcıda.
@@ -816,36 +923,41 @@ const bossRoom = (
   const act: IdleAct | '' =
     mood !== 'idle'
       ? ''
-      : idleSince > 0 && now - idleSince >= NAP_MS
+      : idleSince > 0 && idleAt - idleSince >= NAP_MS
         ? 'nap'
-        : (IDLE_ACTS[Math.floor(now / IDLE_SLOT_MS) % IDLE_ACTS.length] ?? 'sip')
+        : (IDLE_ACTS[Math.floor(idleAt / IDLE_SLOT_MS) % IDLE_ACTS.length] ?? 'sip')
+  // Dilimin içindeki saniye: boşta animasyonları buradan başlar.
+  const phase = (idleAt % IDLE_SLOT_MS) / 1000
+  const begin = phase === 0 ? '0s' : `-${phase.toFixed(2)}s`
   const face = COLOR[fam]
-  const glance = `<g><animate attributeName="opacity" values="0;1;1;0;0" keyTimes="0;0.15;0.6;0.75;1" dur="5s" repeatCount="indefinite"/><rect x="2" y="4" width="1" height="1" fill="${face}"/><rect x="5" y="4" width="1" height="1" fill="${face}"/><rect x="1" y="4" width="1" height="1" fill="${BG}"/><rect x="4" y="4" width="1" height="1" fill="${BG}"/></g>`
+  const glance = `<g opacity="0">${idleAnim('show', GLANCE, begin)}<rect x="2" y="4" width="1" height="1" fill="${face}"/><rect x="5" y="4" width="1" height="1" fill="${face}"/><rect x="1" y="4" width="1" height="1" fill="${BG}"/><rect x="4" y="4" width="1" height="1" fill="${BG}"/></g>`
   const shutEyes = `<rect x="2" y="4" width="1" height="1" fill="${face}"/><rect x="5" y="4" width="1" height="1" fill="${face}"/><rect x="2" y="4.5" width="1" height="0.5" fill="${BG}"/><rect x="5" y="4.5" width="1" height="0.5" fill="${BG}"/>`
+  // Dolaşmada aynı yürüyüşü izleyen iki kopya: biri masanın arkasında, biri önünde.
+  const walker = `<g>${idleAnim('move', WALK, begin)}<g>${idleAnim('move', STEP, begin)}<use href="#s-${fam}"/></g></g>`
   const sprite =
     mood === 'working'
       ? `<g>${TYPE}<use href="#s-${fam}"/></g>`
       : mood === 'waiting'
         ? `<use href="#s-${fam}" transform="translate(0,0.5)"/>${dots(9, 2)}`
         : act === 'window'
-          ? `<use href="#s-${fam}"/>${glance}`
+          ? `<g>${idleAnim('move', LEAN, begin)}<use href="#s-${fam}"/>${glance}</g>`
           : act === 'walk'
-            ? `<g>${SEAT_FADE}<use href="#s-${fam}"/></g>`
+            ? walker
           : act === 'nap'
             ? `<g><animateTransform attributeName="transform" type="translate" values="0,0.5;0,1;0,0.5" dur="3s" repeatCount="indefinite"/><use href="#s-${fam}"/>${shutEyes}</g>`
             : `<use href="#s-${fam}"/>`
   const cupArt = r(160, 104, 8, 8, '#d6d4ca') + r(168, 106, 2, 4, '#d6d4ca')
   const cup =
     act === 'sip'
-      ? `<g><animateTransform attributeName="transform" type="translate" values="0,0;-46,-18;-46,-18;0,0;0,0" keyTimes="0;0.2;0.5;0.7;1" dur="4s" repeatCount="indefinite"/>${cupArt}</g>`
+      ? `<g>${idleAnim('move', SIP, begin)}${cupArt}</g>`
       : cupArt
   const book =
     act === 'read'
-      ? `<g><animateTransform attributeName="transform" type="translate" values="0,0;0,-1;0,0" dur="2.4s" repeatCount="indefinite"/>${r(90, 92, 24, 12, '#E0683C')}${r(101, 92, 2, 12, '#7a2f14')}</g>`
+      ? `<clipPath id="boss-lap"><rect width="360" height="112"/></clipPath><g clip-path="url(#boss-lap)"><g>${idleAnim('move', READ, begin)}${r(90, 92, 24, 12, '#E0683C')}${r(101, 92, 2, 12, '#7a2f14')}</g></g>`
       : ''
   const stroller =
     act === 'walk'
-      ? `<g transform="translate(86,72) scale(4)" opacity="0">${FLOOR_FADE}<g>${STROLL}<g>${STEP}<use href="#s-${fam}"/></g></g></g>`
+      ? `<g transform="translate(86,72) scale(4)" opacity="0">${idleAnim('show', FRONT, begin)}${walker}</g>`
       : ''
   const snore =
     act === 'nap'
@@ -900,6 +1012,7 @@ const office = (
   now: number,
   isBusy: boolean,
   idleSince: number,
+  idleAt: number,
 ): string => {
   const W = 360
   const rows = all.filter(r => r.endedAt === undefined || now - r.endedAt < DONE_MS)
@@ -972,7 +1085,7 @@ const office = (
   return wrap(
     W,
     H,
-    halls.join('') + flows.join('') + bossRoom(all, main, now, isBusy, idleSince) + slots.map(s => room(s, rows, now)).join('') + empty,
+    halls.join('') + flows.join('') + bossRoom(all, main, now, isBusy, idleSince, idleAt) + slots.map(s => room(s, rows, now)).join('') + empty,
     `${L.officeLabel}: ${counts(all)}`,
   )
 }
@@ -1189,6 +1302,13 @@ export const register: Register = (on, options) => {
     const isBusy = await read($, busyAtom)
     const idleSince = await read($, idleAtom)
     const now = rows.reduce((most, r) => Math.max(most, r.at), clock)
+    // Boşta hareketi ve fazı için çizim anındaki saat; nowAtom yalnız tick'te güncellenir.
+    let idleAt = now
+    try {
+      idleAt = Math.max(now, await $.clock.now())
+    } catch {
+      // saat okunamazsa eldeki en güncel değer
+    }
 
     if (e.surface === 'terminal') {
       const { Box, Text } = $.ui.resolve(e)
@@ -1210,7 +1330,7 @@ export const register: Register = (on, options) => {
 
     const { Box, Text, Button, Svg, Markdown } = $.ui.resolve(e)
     const isTree = ui.view === 'tree'
-    const source = isTree ? tree(rows, main, now) : office(rows, main, now, isBusy, idleSince)
+    const source = isTree ? tree(rows, main, now) : office(rows, main, now, isBusy, idleSince, idleAt)
     const alt = `${isTree ? L.treeLabel : L.officeLabel}: ${counts(rows)}`
 
     if (e.props.placement === 'widget') return <Svg source={source} alt={alt} />

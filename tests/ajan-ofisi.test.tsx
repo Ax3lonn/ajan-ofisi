@@ -144,3 +144,48 @@ test('varsayılan ayarlarla panel İngilizce ve Claude adıyla', async ($, on) =
   expect((await ui.find({ type: 'Button', key: 'ended-toggle' }))?.text).toContain('Claude · 1 finished')
   await ui.unmount()
 })
+
+test('boşta hareketler 30 sn tur izler ve dilimin saniyesinden sürer', TR, async ($, on) => {
+  const clock = mock.clock(on)
+  on('turn.complete', () => ({ text: '' }))
+  const draw = async (): Promise<string> => {
+    const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+    const source = String((await ui.find({ type: 'Svg' }))?.props.source)
+    await ui.unmount()
+    return source
+  }
+
+  // 0. dilim: kahve, tur tam başında.
+  const sip = await draw()
+  expect(sip).toContain('begin="0s"')
+  expect(sip).toContain('-46,-18')
+  expect(sip).toContain('dur="30s"')
+  expect(sip).not.toContain('dur="4s"')
+
+  // Yeniden çizim dilimin 12.5. saniyesinden sürer.
+  await clock.advance(12_500)
+  expect(await draw()).toContain('begin="-12.50s"')
+
+  // 1. dilim: kitap kucaktan kalkar.
+  await clock.advance(17_500)
+  const read = await draw()
+  expect(read).toContain('clip-path="url(#boss-lap)"')
+  expect(read).toContain('begin="0s"')
+
+  // 2. dilim: pencere.
+  await clock.advance(30_000)
+  expect(await draw()).toContain('-0.25,0')
+
+  // 3. dilim: dolaşma; öndeki kopya köşede anlık belirir ve kaybolur.
+  await clock.advance(30_000)
+  const walk = await draw()
+  expect(walk).toContain('calcMode="discrete" values="0;1;0" keyTimes="0;0.325;0.79167"')
+  expect(walk.split('21.5,11').length).toBeGreaterThan(2)
+  expect(walk).not.toContain('values="1;0;0;1;1"')
+
+  // 5 dakika beklemede uyuklar.
+  await $.turn.complete({ answer: '', durationMs: 1, isAborted: false, turnId: 't9', reason: 'answer' })
+  await clock.advance(300_000)
+  const nap = await draw()
+  expect(nap).toContain('>Z<')
+})

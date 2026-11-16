@@ -2,7 +2,7 @@
 
 A mod for Claude Code that shows your subagents live, as pixel-art characters in an office, in a panel next to the chat. Each agent gets its own room and you can see at a glance who is working on what.
 
-Version 0.2.0. [Türkçe](#türkçe)
+Version 0.2.1. [Türkçe](#türkçe)
 
 ## Features
 
@@ -76,7 +76,7 @@ MIT. See [LICENSE](LICENSE). Author: Ax3lonn.
 
 Claude Code için bir mod: alt ajanlarını sohbetin yanındaki panelde, piksel karakterlerle bir ofis olarak canlı gösterir. Her ajanın kendi odası vardır; kimin ne yaptığını bir bakışta görürsün.
 
-Sürüm 0.2.0.
+Sürüm 0.2.1.
 
 ### Özellikler
 
