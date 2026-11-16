@@ -189,3 +189,33 @@ test('boşta hareketler 30 sn tur izler ve dilimin saniyesinden sürer', TR, asy
   const nap = await draw()
   expect(nap).toContain('>Z<')
 })
+
+test('ana oturumun modeli değişince yönetici odası da değişir', TR, async ($, on) => {
+  const clock = mock.clock(on)
+  let model = 'claude-fable-5-2'
+  on('command.register', () => ({ value: { command: 'ajan-ofisi' } }))
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('session.model', () => ({ value: model }))
+  on('agent.list', () => ({ value: [] }))
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  const draw = async (): Promise<string> => {
+    const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+    const source = String((await ui.find({ type: 'Svg' }))?.props.source)
+    await ui.unmount()
+    return source
+  }
+
+  await clock.advance(5_000)
+  const before = await draw()
+  expect(before).toContain('href="#s-fable"')
+  expect(before).toContain('Fable 5.2')
+
+  // Oturumun modeli Opus'a çevrilir: bir sonraki yenilemede karakter ve yazı değişir.
+  model = 'claude-opus-5-5'
+  await clock.advance(5_000)
+  const after = await draw()
+  expect(after).toContain('href="#s-opus"')
+  expect(after).toContain('Opus 5.5')
+  expect(after).not.toContain('href="#s-fable"')
+})

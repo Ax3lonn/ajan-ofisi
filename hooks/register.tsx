@@ -480,13 +480,12 @@ const tick = async ($: Engine): Promise<void> => {
   const isNewSlot = Math.floor(now / IDLE_SLOT_MS) !== Math.floor(shownNow / IDLE_SLOT_MS)
   if (isLive || isNewSlot) await update($, nowAtom, () => now)
   const main = await read($, mainAtom)
-  if (main === '') {
-    try {
-      const model = await $.session.model()
-      if (model !== '') await update($, mainAtom, () => model)
-    } catch {
-      // model sorulamadıysa simge gri kalır
-    }
+  // Model oturum içinde değişebilir; her yenilemede sorulur, yalnız değiştiyse yazılır.
+  try {
+    const model = await $.session.model()
+    if (model !== '' && model !== main) await update($, mainAtom, () => model)
+  } catch {
+    // model sorulamadıysa eldeki değer kalır (hiç yoksa simge gri)
   }
 }
 

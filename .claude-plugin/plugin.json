@@ -1,6 +1,6 @@
 {
   "name": "ajan-ofisi",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "A live side panel that shows your subagents as pixel characters in an office, plus a tree view",
   "types": "./types/index.d.ts",
   "userConfig": {
